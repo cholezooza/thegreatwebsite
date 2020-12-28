@@ -1,0 +1,424 @@
+https://dev.to/manishfoodtechs/live-broadcast-on-html-page-with-html5-video-injust-30-minutes-3pp6
+===========================================================================================
+
+# 1: Install Nginx + RTMP module.
+
+sudo apt install -y nginx
+sudo apt install -y libnginx-mod-rtmp
+
+# 2: Installing required & additional software.
+
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:certbot/certbot
+
+sudo dpkg --add-architecture i386
+sudo apt update
+
+sudo apt install wget nano python-certbot-nginx ufw unzip software-properties-common dpkg-dev git make gcc automake build-essential joe ntp ntpdate zlib1g-dev libpcre3 libpcre3-dev libssl-dev libxslt1-dev libxml2-dev libgd-dev libgeoip-dev libgoogle-perftools-dev libperl-dev pkg-config autotools-dev gpac ffmpeg sysstat nasm yasm mediainfo mencoder lame libvorbisenc2 libvorbisfile3 libx264-dev libvo-aacenc-dev libmp3lame-dev libopus-dev libfdk-aac-dev libavcodec-dev libavformat-dev libavutil-dev g++ libc6:i386 freeglut3-dev libx11-dev libxmu-dev libxi-dev libglu1-mesa libglu1-mesa-dev
+
+OPTIONAL!
+sudo apt install mariadb-server mariadb-client phpmyadmin php php-cgi php-common php-pear php-mbstring php-fpm
+
+# 3: Setup a firewall and perform other required steps.
+
+cd /usr/src
+git clone https://github.com/arut/nginx-rtmp-module
+cp /usr/src/nginx-rtmp-module/stat.xsl /var/www/html/stat.xsl
+
+sudo nano /var/www/html/crossdomain.xml
+
+	<?xml version="1.0"?>
+	<!DOCTYPE cross-domain-policy SYSTEM "http://www.adobe.com/xml/dtds/cross-domain-policy.dtd">
+	<cross-domain-policy>
+	<allow-access-from domain="*"/>
+	</cross-domain-policy>
+
+sudo nano /var/www/html/info.php
+
+	<?php
+	phpinfo();
+	?>
+
+wget -O /var/www/html/poster.jpg https://i.imgur.com/gTeWLDO.jpg
+
+sudo mkdir /var/livestream
+sudo mkdir /var/livestream/hls
+
+sudo chown -R www-data: /var/livestream
+
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 10000/tcp
+sudo ufw allow 1935
+
+sudo nano /etc/nginx/nginx.conf
+#4. Ngnix configurations
+	On line 2 change the worker_processes option from auto to 1, so it says: worker_processes 1;
+
+	Scroll all the way down and add the following at the end of the file, or something similar if you're situation requires other variables (use your brain :-)
+
+----
+
+rtmp {
+        server {
+                listen 1935;
+                chunk_size 8192;
+
+	application live {
+		live on;
+		interleave off;
+		meta on;
+		wait_key on;
+		wait_video on;
+		idle_streams off;
+		sync 300ms;
+		session_relay on;
+		allow publish all;
+		allow play all;
+		max_connections 1000;
+
+		## == FORWARD STREAM (OPTIONAL) == ##
+		# == == TWITCH RE-STREAM == == #
+		# push rtmp://live-ams.twitch.tv/app/LIVESTREAM_KEY;
+		# == == YOUTUBE RE-STREAM == == #
+		# push rtmp://a.rtmp.youtube.com/live2/LIVESTREAM_KEY;
+		# == == MIXER.com RE-STREAM == == #
+		# push rtmp://ingest-ams.mixer.com:1935/beam/LIVESTREAM_KEY;
+
+		publish_notify off;
+		# play_restart off;
+		# on_publish http://your-website/on_publish.php;
+		# on_play http://your-website/on_play.php;
+		# on_record_done http://your-website/on_record_done.php;
+			
+		## == HLS == ##
+		hls off;
+		# hls_nested on;
+		# hls_path /var/livestream/hls/live;
+		# hls_base_url http://abc.de:1953/hls;
+		# hls_playlist_length 60s;
+		# hls_fragment 10s;
+		# hls_sync 100ms;
+		# hls_cleanup on;
+
+		## == DASH == ##
+		dash off;
+		# dash_nested on;
+		# dash_path /var/livestream/dash;
+		# dash_fragment 10s;
+		# dash_playlist_length 60s;
+		# dash_cleanup on;
+
+		push rtmp://localhost/hls;
+		}
+		
+	application hls {
+		live on;
+		allow play all;
+		hls on;
+		hls_type live;
+		hls_nested on;
+		hls_path /var/livestream/hls;
+		hls_cleanup on;
+		hls_sync 100ms;
+		hls_fragment 10s;
+		hls_playlist_length 60s;
+		hls_fragment_naming system;
+		}
+	}
+}
+
+----
+
+nginx -t
+sudo systemctl restart nginx
+
+sudo nano /etc/nginx/sites-available/default
+
+----
+
+server {
+	listen 80 default_server;
+	listen [::]:80 default_server;
+	# listen 443 ssl http2 default_server;
+	# listen [::]:443 ssl default_server;
+	# include snippets/snakeoil.conf;
+	keepalive_timeout 70;
+	gzip off;
+
+	root /var/www/html;
+
+	# Add index.php to the list if you are using PHP
+	index index.php index.nginx-debian.html index.html index.htm;
+
+	server_name _;
+
+	# add_header Strict-Transport-Security "max-age=63072000;";
+	# add_header X-Frame-Options "DENY";
+
+	location / {
+		location ~* \.m3u8$ {
+		add_header Cache-Control no-cache;
+		}
+		add_header Access-Control-Allow-Origin *;
+
+		# First attempt to serve request as file, then as directory, then fall back to displaying a 404.
+		try_files $uri $uri/ =404;
+	}
+
+	location ~ \.php$ {
+		include snippets/fastcgi-php.conf;
+	#	# With php-fpm (or other unix sockets):
+		fastcgi_pass unix:/var/run/php/php7.2-fpm.sock;
+	#	# With php-cgi (or other tcp sockets):
+	#	fastcgi_pass 127.0.0.1:9000;
+	}
+
+	## deny access to .htaccess files, if Apache's document root concurs with nginx's one
+	#location ~ /\.ht {
+	#	deny all;
+	#}
+
+## This provides RTMP statistics in XML at http://domain.net/stat
+location /stat {
+	rtmp_stat all;
+	rtmp_stat_stylesheet stat.xsl;
+	# auth_basic "Restricted Content";
+        # auth_basic_user_file /etc/nginx/.htpasswd;
+	}
+
+## XML stylesheet to view RTMP stats. Copy stat.xsl wherever you want and put the full directory path here
+location /stat.xsl {
+	root /var/www/html/;
+	}
+}
+
+----
+
+nginx -t
+sudo systemctl restart nginx
+
+# Obviously you need to change the DOMAIN part in the next lines to whatever your domain name is.
+
+sudo nano /etc/nginx/sites-available/DOMAIN.net.conf
+
+# Add the following to this new file, but don't forget to change DOMAIN first!
+
+----
+
+server {
+    listen 80;
+    listen [::]:80;
+    root /var/www/html;
+    server_name DOMAIN.net www.DOMAIN.net;
+}
+
+----
+
+nginx -t
+
+ln -s /etc/nginx/sites-available/DOMAIN.net.conf /etc/nginx/sites-enabled/DOMAIN.net.conf
+
+nginx -t
+sudo systemctl restart nginx
+
+# 5: Confirm that the RTMP stream works.
+
+(seeany youtube video how to run RTMP link in VLC)
+
+# 6: Create SSL certificates for Nginx
+
+sudo openssl dhparam -out /etc/ssl/certs/dhparam.pem 4096
+
+sudo certbot --nginx -d DOMAIN.net -d www.DOMAIN.net
+
+sudo crontab -e
+
+	0 12 * * * /usr/bin/certbot renew --quiet
+
+
+sudo nano /etc/nginx/sites-available/DOMAIN.net.conf
+
+---
+
+erver {
+	listen 80;
+	listen [::]:80;
+	listen 443 ssl http2;
+	listen [::]:443 ssl;
+	# include snippets/snakeoil.conf;
+	keepalive_timeout 70;
+	gzip off;
+
+	root /var/www/html;
+
+	# Add index.php to the list if you are using PHP
+	index index.php index.nginx-debian.html index.html index.htm;
+
+	server_name DOMAIN.COM;
+
+	ssl_certificate /etc/letsencrypt/live/DOMAIN.COM/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/DOMAIN.COM/privkey.pem;
+	ssl_trusted_certificate /etc/letsencrypt/live/DOMAIN.COM/chain.pem;
+	ssl_dhparam /etc/ssl/certs/dhparam.pem;
+
+	ssl_protocols TLSv1.2 TLSv1.3;
+	ssl_session_cache shared:le_nginx_SSL:1m;
+	ssl_session_timeout 1440m;
+	ssl_prefer_server_ciphers on;
+	ssl_session_tickets off;
+	ssl_stapling off;
+	ssl_stapling_verify on;
+	resolver 8.8.8.8 8.8.4.4 valid=300s;
+	resolver_timeout 5s;
+	ssl_ecdh_curve secp384r1;
+
+	ssl_ciphers "EECDH+AESGCM:EDH+AESGCM:ECDHE-RSA-AES128-GCM-SHA256:AES256+EECDH:DHE-RSA-AES128-GCM-SHA256:AES256+EDH:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA:ECDHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES256-GCM-SHA384:AES128-GCM-SHA256:AES256-SHA256:AES128-SHA256:AES256-SHA:AES128-SHA:DES-CBC3-SHA:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!MD5:!PSK:!RC4";
+
+	add_header Strict-Transport-Security "max-age=63072000;";
+	add_header X-Frame-Options "DENY";
+
+ 	# Redirect non-https traffic to https
+		# if ($scheme != "https") {
+		# return 301 https://$host$request_uri;
+		# }
+
+	location / {
+		location ~* \.m3u8$ {
+		add_header Cache-Control no-cache;
+		}
+		add_header Access-Control-Allow-Origin *;
+
+	# First attempt to serve file, then as directory, then a 404.
+		try_files $uri $uri/ =404;
+	}
+
+	# pass PHP scripts to FastCGI server
+
+	location ~ \.php$ {
+		include snippets/fastcgi-php.conf;
+	#	# With php-fpm (or other unix sockets):
+		fastcgi_pass unix:/var/run/php/php7.2-fpm.sock;
+	#	# With php-cgi (or other tcp sockets):
+	#	fastcgi_pass 127.0.0.1:9000;
+	}
+
+	# deny access to .htaccess files, if Apache's document root concurs with nginx's one
+	
+	#location ~ /\.ht {
+	#	deny all;
+	#}
+
+# This provides RTMP statistics in XML at http://your-server-address/stat
+location /stat {
+	rtmp_stat all;
+	rtmp_stat_stylesheet stat.xsl;
+	# auth_basic "Restricted Content";
+        # auth_basic_user_file /etc/nginx/.htpasswd;
+	}
+
+# XML stylesheet to view RTMP stats. Copy stat.xsl wherever you want and put the full directory path here
+location /stat.xsl {
+	root /var/www/html/;
+	}
+
+# Control interface (extremely useful, but can also boot people from streams so we put basic auth in front of it - see https://github.com/arut/nginx-rtmp-module/wiki/Control-module for more info
+
+#location /control {
+	# you'll need a htpasswd auth file, that's outside the scope of this doc but any apache one will work
+	# auth_basic "Restricted Content";
+	# auth_basic_user_file /etc/nginx/.htpasswd;
+	#rtmp_control all;
+	#}
+
+#creates the http-location for our full-res desktop HLS stream "http://my-ip/live/my-stream-key/index.m3u8"
+location /live {
+	# root /var/livestream/hls;
+	alias /var/livestream/hls;
+	expires -1;
+	autoindex on;
+	autoindex_localtime on;
+	# CORS setup #
+		set $sent_http_accept_ranges bytes;
+		add_header 'Cache-Control' 'no-cache';
+		add_header Cache-Control no-cache;
+		add_header 'Access-Control-Allow-Origin' '*' always;
+		add_header 'Access-Control-Expose-Headers' 'Content-Length';
+	# allow CORS preflight requests #
+		if ($request_method = 'OPTIONS') {
+		add_header 'Access-Control-Allow-Origin' '*';
+		add_header 'Access-Control-Max-Age' 1728000;
+		add_header 'Content-Type' 'text/plain charset=UTF-8';
+		add_header 'Content-Length' 0;
+		return 204;
+		}
+	types {
+		application/vnd.apple.mpegurl m3u8;
+		application/dash+xml mpd;
+		video/mp2t ts;
+		}
+	}
+}
+
+----
+
+nginx -t
+sudo systemctl restart nginx
+
+
+# 7: Video.js installation & and example index.html
+
+sudo mkdir /var/www/html/videojs
+cd /var/www/html/videojs
+wget https://github.com/videojs/video.js/releases/download/v7.7.6/video-js-7.7.6.zip
+
+wget https://github.com/videojs/http-streaming/releases/download/v1.13.1/videojs-http-streaming.js
+
+unzip /var/www/html/videojs/video-js-7.7.6.zip
+chown -R www-data: /var/www/html
+ls -la /var/www/html/videojs
+
+
+sudo nano /var/www/html/index.html
+
+----
+
+<!DOCTYPE html>
+<html>
+<head>
+<script src='https://DOMAIN.net/videojs/video.js'></script>
+<script src="https://DOMAIN.net/videojs/videojs-http-streaming.js"></script>
+<meta charset=utf-8 />
+<title>LiveStream</title>
+<link href="https://DOMAIN.net/videojs/video-js.min.css" rel="stylesheet">
+<!-- <link href="https://DOMAIN.net/videojs/videojs-sublime-skin.min.css" rel="stylesheet"> -->
+<!-- <link href="https://DOMAIN.net/videojs/videojs-sublime-skin.css" rel="stylesheet"> -->
+<!-- <link href="https://DOMAIN.net/videojs/video-js.css" rel="stylesheet"> -->
+<!-- <link href="https://DOMAIN.net/videojs/videojs-skin-twitchy.css" rel="stylesheet" type="text/css">  -->
+</head>
+<body>
+<center>
+
+<video-js id="live_stream" class="video-js vjs-fluid vjs-default-skin vjs-big-play-centered" controls preload="auto" autoplay="true" width="auto" height="auto" poster="https://DOMAIN.net/poster.jpg">
+
+<source src="https://DOMAIN.net/live/stream/index.m3u8" type="application/x-mpegURL">
+
+    <p class='vjs-no-js'>
+      To view this video please enable JavaScript, and consider upgrading to a web browser that
+      <a href='https://videojs.com/html5-video-support/' target='_blank'>supports HTML5 video</a>
+    </p>
+</video-js>
+  
+  <script>
+    var player = videojs('live_stream');
+	player.play();
+  </script>
+
+</center>
+</body>
+</html>
+
+----
+
+chown -R www-data: /var/www/html
