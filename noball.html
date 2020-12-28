@@ -1,14 +1,15 @@
-<object classid="CLSID:22d6f312-b0f6-11d0-94ab-0080c74c7e95" codebase="http://activex.microsoft.com/activex/controls/mplayer/en/nsmp2inf.cab#Version=5,1,52,701"
-            height="285" id="mediaPlayer" standby="Loading Microsoft Windows Media Player components..."
-            type="application/x-oleobject" width="360" style="margin-bottom:30px;">
-            <param name="fileName" value="https://doofootball.livestream-cdn.com/iptv/epl-1.stream/playlist.m3u8" />
-            <param name="animationatStart" value="true" />
-            <param name="transparentatStart" value="true" />
-            <param name="autoStart" value="true" />
-            <param name="showControls" value="true" />
-            <param name="loop" value="true" />
-            <embed autosize="-1" autostart="true" bgcolor="darkblue" designtimesp="5311" displaysize="4"
-                height="285" id="mediaPlayer" loop="true" name="mediaPlayer" pluginspage="http://microsoft.com/windows/mediaplayer/en/download/"
-                showcontrols="true" showdisplay="0" showstatusbar="-1" showtracker="-1" src="mms://my_IP_Address:my_port"
-                type="application/x-mplayer2" videoborder3d="-1" width="360"></embed>
-</object>
+<!DOCTYPE html> 
+<html> 
+<body> 
+
+<video id="myVideo" width="320" height="176" controls>
+  <source src="https://doofootball.livestream-cdn.com/iptv/hd-tsport3.stream/playlist.m3u8" type="mp4">
+  Your browser does not support HTML5 video.
+</video>
+
+<script>
+var vid = document.getElementById("myVideo");
+
+function myFunction() { 
+  alert("Start: " + vid.played.start(0) + " End: "  + vid.played.end(0));
+} 
